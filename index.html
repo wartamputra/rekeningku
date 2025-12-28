@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cek Data Siswa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full glass p-8 rounded-2xl shadow-xl border border-slate-200">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold text-blue-800">Pencarian Data Rekening</h1>
+            <p class="text-slate-500 text-sm mt-2">Masukkan NIS untuk melihat detail data</p>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label for="nisInput" class="block text-base font-semibold text-slate-700 mb-1">Nomor Induk Siswa (NIS)</label>
+                <input type="text" id="nisInput" placeholder="Masukkan NIS (Contoh: 1234)" 
+                    class="w-full px-4 py-3 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+            </div>
+            
+            <button onclick="searchData()" id="searchBtn"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center">
+                <span id="btnText">Cari Data</span>
+                <div id="loader" class="hidden ml-2 w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            </button>
+        </div>
+
+        <!-- Result Section -->
+        <div id="resultArea" class="hidden mt-8 pt-6 border-t border-slate-100 animate-fade-in">
+            <div class="bg-blue-50 p-4 rounded-xl">
+                <p class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-3">Informasi Siswa</p>
+                <div class="grid grid-cols-2 gap-y-3">
+                    <div class="text-sm text-slate-500 font-medium">Nama</div>
+                    <div id="resNama" class="text-sm text-slate-800 font-bold">: -</div>
+                    
+                    <div class="text-sm text-slate-500 font-medium">Kelas</div>
+                    <div id="resKelas" class="text-sm text-slate-800 font-bold">: -</div>
+                    
+                    <div class="text-sm text-slate-500 font-medium">NISN</div>
+                    <div id="resNISN" class="text-sm text-slate-800 font-bold">: -</div>
+                    
+                    <div class="text-sm text-slate-500 font-medium">No. Rekening</div>
+                    <div id="resRek" class="text-sm text-blue-700 font-bold">: -</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorArea" class="hidden mt-6 p-4 bg-red-50 border border-red-100 rounded-xl text-center">
+            <p id="errorMsg" class="text-sm text-red-600 font-medium"></p>
+        </div>
+
+        <!-- Debug Area (Hanya muncul jika gagal) -->
+        <div id="debugArea" class="hidden mt-4 p-2 bg-gray-100 rounded text-[10px] text-gray-500 overflow-auto max-h-32">
+            <p class="font-bold">Raw Data Debug:</p>
+            <pre id="debugContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Pastikan SHEET_ID dan SHEET_NAME sudah benar
+        const SHEET_ID = '1sGP10aA3jV83keM4bGgQ75KLysv9sqihJn48usqhZws';
+        const SHEET_NAME = 'Data';
+        // URL Ekspor CSV Langsung (Lebih stabil untuk data mentah)
+        const URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=${SHEET_NAME}`;
+
+        async function searchData() {
+            const inputVal = document.getElementById('nisInput').value.trim();
+            const btn = document.getElementById('searchBtn');
+            const loader = document.getElementById('loader');
+            const btnText = document.getElementById('btnText');
+            const resultArea = document.getElementById('resultArea');
+            const errorArea = document.getElementById('errorArea');
+            const debugArea = document.getElementById('debugArea');
+
+            if (!inputVal) {
+                showError("Mohon masukkan NIS terlebih dahulu.");
+                return;
+            }
+
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+            btnText.innerText = "Proses...";
+            resultArea.classList.add('hidden');
+            errorArea.classList.add('hidden');
+            debugArea.classList.add('hidden');
+
+            try {
+                // Fetch data dengan cache buster agar selalu fresh
+                const response = await fetch(URL + '&cache=' + new Date().getTime());
+                if (!response.ok) throw new Error("Gagal mengambil data. Pastikan Sheet diatur 'Siapa saja dengan link'.");
+                
+                const csvText = await response.text();
+                document.getElementById('debugContent').innerText = csvText.substring(0, 500); // Debug info
+
+                // Parsing CSV sederhana tapi kuat
+                const rows = csvText.split(/\r?\n/).map(row => {
+                    return row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(cell => 
+                        cell.replace(/^"(.*)"$/, '$1').trim()
+                    );
+                });
+
+                if (rows.length < 1) {
+                    showError("Data di Sheet kosong.");
+                    return;
+                }
+
+                // Kita cari tanpa mengandalkan nama header (Cari di semua kolom)
+                let student = null;
+                let foundRow = -1;
+
+                // Loop setiap baris (mulai dari baris 0 untuk antisipasi tidak ada header)
+                for(let i = 0; i < rows.length; i++) {
+                    // Cari di setiap sel dalam baris tersebut
+                    if (rows[i].some(cell => cell === inputVal)) {
+                        student = rows[i];
+                        foundRow = i;
+                        break;
+                    }
+                }
+
+                if (student) {
+                    // Berdasarkan permintaan: Nama, Kelas, NISN, Nomor Rekening
+                    // Kita akan mencoba mencari berdasarkan index kolom yang umum
+                    // Jika data berantakan, kita tampilkan saja apa yang ada
+                    
+                    // Logika fallback: cari kolom mana yang berisi teks/angka panjang (rekening) atau kelas
+                    const nama = student[1] || 'Tidak ada data';
+                    const kelas = student[2] || 'Tidak ada data';
+                    const nisn = student[3] || 'Tidak ada data';
+                    const rek = student[4] || 'Tidak ada data';
+
+                    document.getElementById('resNama').innerText = `: ${nama}`;
+                    document.getElementById('resKelas').innerText = `: ${kelas}`;
+                    document.getElementById('resNISN').innerText = `: ${nisn}`;
+                    document.getElementById('resRek').innerText = `: ${rek}`;
+                    
+                    resultArea.classList.remove('hidden');
+                } else {
+                    showError(`NIS "${inputVal}" tidak ditemukan.`);
+                    debugArea.classList.remove('hidden'); // Tampilkan debug jika gagal
+                }
+
+            } catch (error) {
+                console.error(error);
+                showError("Error: " + error.message);
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+                btnText.innerText = "Cari Data";
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('errorMsg').innerText = msg;
+            document.getElementById('errorArea').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
