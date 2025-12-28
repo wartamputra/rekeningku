@@ -59,19 +59,11 @@
         <div id="errorArea" class="hidden mt-6 p-4 bg-red-50 border border-red-100 rounded-xl text-center">
             <p id="errorMsg" class="text-sm text-red-600 font-medium"></p>
         </div>
-
-        <!-- Debug Area (Hanya muncul jika gagal) -->
-        <div id="debugArea" class="hidden mt-4 p-2 bg-gray-100 rounded text-[10px] text-gray-500 overflow-auto max-h-32">
-            <p class="font-bold">Raw Data Debug:</p>
-            <pre id="debugContent"></pre>
-        </div>
     </div>
 
     <script>
-        // Pastikan SHEET_ID dan SHEET_NAME sudah benar
         const SHEET_ID = '1sGP10aA3jV83keM4bGgQ75KLysv9sqihJn48usqhZws';
         const SHEET_NAME = 'Data';
-        // URL Ekspor CSV Langsung (Lebih stabil untuk data mentah)
         const URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=${SHEET_NAME}`;
 
         async function searchData() {
@@ -81,7 +73,6 @@
             const btnText = document.getElementById('btnText');
             const resultArea = document.getElementById('resultArea');
             const errorArea = document.getElementById('errorArea');
-            const debugArea = document.getElementById('debugArea');
 
             if (!inputVal) {
                 showError("Mohon masukkan NIS terlebih dahulu.");
@@ -93,17 +84,13 @@
             btnText.innerText = "Proses...";
             resultArea.classList.add('hidden');
             errorArea.classList.add('hidden');
-            debugArea.classList.add('hidden');
 
             try {
-                // Fetch data dengan cache buster agar selalu fresh
                 const response = await fetch(URL + '&cache=' + new Date().getTime());
-                if (!response.ok) throw new Error("Gagal mengambil data. Pastikan Sheet diatur 'Siapa saja dengan link'.");
+                if (!response.ok) throw new Error("Gagal mengambil data. Periksa izin akses Sheet.");
                 
                 const csvText = await response.text();
-                document.getElementById('debugContent').innerText = csvText.substring(0, 500); // Debug info
 
-                // Parsing CSV sederhana tapi kuat
                 const rows = csvText.split(/\r?\n/).map(row => {
                     return row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(cell => 
                         cell.replace(/^"(.*)"$/, '$1').trim()
@@ -111,49 +98,30 @@
                 });
 
                 if (rows.length < 1) {
-                    showError("Data di Sheet kosong.");
+                    showError("Data tidak tersedia.");
                     return;
                 }
 
-                // Kita cari tanpa mengandalkan nama header (Cari di semua kolom)
                 let student = null;
-                let foundRow = -1;
-
-                // Loop setiap baris (mulai dari baris 0 untuk antisipasi tidak ada header)
                 for(let i = 0; i < rows.length; i++) {
-                    // Cari di setiap sel dalam baris tersebut
                     if (rows[i].some(cell => cell === inputVal)) {
                         student = rows[i];
-                        foundRow = i;
                         break;
                     }
                 }
 
                 if (student) {
-                    // Berdasarkan permintaan: Nama, Kelas, NISN, Nomor Rekening
-                    // Kita akan mencoba mencari berdasarkan index kolom yang umum
-                    // Jika data berantakan, kita tampilkan saja apa yang ada
-                    
-                    // Logika fallback: cari kolom mana yang berisi teks/angka panjang (rekening) atau kelas
-                    const nama = student[1] || 'Tidak ada data';
-                    const kelas = student[2] || 'Tidak ada data';
-                    const nisn = student[3] || 'Tidak ada data';
-                    const rek = student[4] || 'Tidak ada data';
-
-                    document.getElementById('resNama').innerText = `: ${nama}`;
-                    document.getElementById('resKelas').innerText = `: ${kelas}`;
-                    document.getElementById('resNISN').innerText = `: ${nisn}`;
-                    document.getElementById('resRek').innerText = `: ${rek}`;
-                    
+                    document.getElementById('resNama').innerText = `: ${student[1] || '-'}`;
+                    document.getElementById('resKelas').innerText = `: ${student[2] || '-'}`;
+                    document.getElementById('resNISN').innerText = `: ${student[3] || '-'}`;
+                    document.getElementById('resRek').innerText = `: ${student[4] || '-'}`;
                     resultArea.classList.remove('hidden');
                 } else {
                     showError(`NIS "${inputVal}" tidak ditemukan.`);
-                    debugArea.classList.remove('hidden'); // Tampilkan debug jika gagal
                 }
 
             } catch (error) {
-                console.error(error);
-                showError("Error: " + error.message);
+                showError("Terjadi kesalahan: " + error.message);
             } finally {
                 btn.disabled = false;
                 loader.classList.add('hidden');
